@@ -114,6 +114,25 @@ done
 oc adm policy add-cluster-role-to-user cluster-admin admin
 oc adm policy add-cluster-role-to-group cluster-reader system:serviceaccounts
 
+echo "Installing the router"
+oc adm policy add-scc-to-user hostnetwork -z router
+
+echo "Lets pull the router docker images first"
+docker pull openshift/origin-haproxy-router:v${OPENSHIFT_VERSION}
+docker pull prom/haproxy-exporter:latest
+
+echo "Now lets wait for the router to start"
+
+# create the router
+oc adm router --create --credentials=/var/lib/openshift/openshift.local.config/master/openshift-router.kubeconfig --service-account=router --expose-metrics
+
+until oc get pods -l openshift.io/deployer-pod-for.name=router-1 | grep -m 1 "Running"; do sleep 1 ; done
+
+oc annotate service router prometheus.io/port=9101
+oc annotate service router prometheus.io/scheme=http
+oc annotate service router prometheus.io/path=/metrics
+oc annotate service router prometheus.io/scrape=true
+
 gofabric8 deploy -y ${APP_PARAM}
 gofabric8 secrets -y
 gofabric8 volume -y --host-path="/vagrant/fabric8-data"
@@ -176,21 +195,6 @@ until oc get pods -l project=console,provider=fabric8  | grep -m 1 "Running"; do
 
 echo "Fabric8 console is now running. Waiting for the Openshift Router to start..."
 
-echo "Lets pull the router docker images first"
-docker pull openshift/origin-haproxy-router:v${OPENSHIFT_VERSION}
-docker pull prom/haproxy-exporter:latest
-
-echo "Now lets wait for the router to start"
-
-# create the router
-oc adm router --create --credentials=/var/lib/openshift/openshift.local.config/master/openshift-router.kubeconfig --service-account=router --expose-metrics
-
-until oc get pods -l openshift.io/deployer-pod-for.name=router-1 | grep -m 1 "Running"; do sleep 1 ; done
-
-oc annotate service router prometheus.io/port=9101
-oc annotate service router prometheus.io/scheme=http
-oc annotate service router prometheus.io/path=/metrics
-oc annotate service router prometheus.io/scrape=true
 
 cat <<EOT
 
